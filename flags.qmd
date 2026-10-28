@@ -1,0 +1,463 @@
+---
+title: "🌍 World Flag Explorer"
+page-layout: full
+format:
+  html:
+    theme: cosmo
+    toc: false
+execute:
+  echo: false
+  warning: false
+  message: false
+---
+
+```{=html}
+<style>
+  body {
+    background: linear-gradient(135deg, #0f172a 0%, #1e1b4b 50%, #0f172a 100%);
+    color: #f8fafc;
+    font-family: 'Inter', system-ui, -apple-system, sans-serif;
+  }
+  h1.title {
+    text-align: center;
+    font-weight: 800;
+    font-size: 2.6rem;
+    background: linear-gradient(90deg, #38bdf8, #a855f7, #f43f5e, #facc15);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    margin-bottom: 0.5rem;
+  }
+  .hero-card {
+    background: linear-gradient(145deg, rgba(30, 41, 59, 0.92), rgba(15, 23, 42, 0.95));
+    border: 1px solid rgba(148, 163, 184, 0.25);
+    border-radius: 20px;
+    padding: 1.75rem;
+    margin-bottom: 1.75rem;
+    box-shadow: 0 20px 40px rgba(0, 0, 0, 0.45), 0 0 25px rgba(56, 189, 248, 0.12);
+    backdrop-filter: blur(12px);
+  }
+  .stat-tile {
+    background: rgba(255, 255, 255, 0.05);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    border-radius: 12px;
+    padding: 0.7rem 0.9rem;
+    transition: transform 0.15s ease, background 0.15s ease;
+  }
+  .stat-tile:hover {
+    transform: translateY(-2px);
+    background: rgba(255, 255, 255, 0.09);
+  }
+  .stat-label {
+    font-size: 0.72rem;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    color: #94a3b8;
+    margin-bottom: 2px;
+  }
+  .stat-value {
+    font-size: 0.95rem;
+    font-weight: 600;
+    color: #f1f5f9;
+  }
+  .mini-flag-btn {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: space-between;
+    padding: 10px 8px;
+    border-radius: 12px;
+    cursor: pointer;
+    transition: all 0.18s cubic-bezier(0.4, 0, 0.2, 1);
+  }
+  .mini-flag-btn:hover {
+    transform: translateY(-5px) scale(1.05);
+    box-shadow: 0 10px 20px rgba(0, 0, 0, 0.4);
+  }
+  .action-btn {
+    border: none;
+    border-radius: 999px;
+    padding: 0.55rem 1.15rem;
+    font-weight: 600;
+    font-size: 0.9rem;
+    cursor: pointer;
+    transition: transform 0.15s ease, filter 0.15s ease;
+  }
+  .action-btn:hover {
+    transform: translateY(-2px);
+    filter: brightness(1.1);
+  }
+</style>
+```
+
+```{r}
+library(tidyverse)
+library(jsonlite)
+
+raw_countries <- fromJSON(
+  "https://gitlab.com/restcountries/restcountries/-/raw/master/src/main/resources/countriesV3.1.json",
+  simplifyVector = FALSE
+)
+
+country_facts <- map_dfr(raw_countries, \(c) {
+  code <- tolower(c$cca2 %||% "")
+  langs <- if (!is.null(c$languages)) paste(unlist(c$languages), collapse = ", ") else "None listed"
+  currs <- if (!is.null(c$currencies)) {
+    map_chr(c$currencies, \(cur) paste0(cur$name, if (!is.null(cur$symbol)) paste0(" (", cur$symbol, ")") else "")) |>
+      paste(collapse = ", ")
+  } else {
+    "None"
+  }
+  cap <- if (!is.null(c$capital) && length(c$capital) > 0) paste(unlist(c$capital), collapse = ", ") else "No official capital"
+  alt <- c$flags$alt %||% ""
+  tld <- if (!is.null(c$tld) && length(c$tld) > 0) c$tld[[1]] else "N/A"
+  demonym <- c$demonyms$eng$m %||% "N/A"
+  tz <- if (!is.null(c$timezones) && length(c$timezones) > 0) paste(head(unlist(c$timezones), 2), collapse = ", ") else "UTC"
+  borders_n <- if (!is.null(c$borders)) length(c$borders) else 0L
+  lat <- if (!is.null(c$latlng) && length(c$latlng) >= 2) c$latlng[[1]] else 0
+  lng <- if (!is.null(c$latlng) && length(c$latlng) >= 2) c$latlng[[2]] else 0
+
+  tibble(
+    code = code,
+    name = c$name$common %||% code,
+    official_name = c$name$official %||% "",
+    capital = cap,
+    region = c$region %||% "Other",
+    subregion = c$subregion %||% "",
+    population = format(c$population %||% 0, big.mark = ",", scientific = FALSE),
+    area = paste0(format(c$area %||% 0, big.mark = ",", scientific = FALSE), " km²"),
+    languages = langs,
+    currencies = currs,
+    car_side = str_to_title(c$car$side %||% "right"),
+    demonym = demonym,
+    tld = tld,
+    timezone = tz,
+    borders = ifelse(borders_n == 0, "Island / No land borders", paste0(borders_n, " neighboring countries")),
+    un_status = ifelse(isTRUE(c$unMember), "UN Member State", "Territory / Observer"),
+    start_of_week = str_to_title(c$startOfWeek %||% "Monday"),
+    coat_of_arms = c$coatOfArms$png %||% "",
+    map_url = paste0("https://www.openstreetmap.org/?mlat=", lat, "&mlon=", lng, "#map=5/", lat, "/", lng),
+    flag_fact = if (nzchar(alt)) alt else paste0("This is the official flag of ", c$name$common, ".")
+  )
+})
+
+uk_nations <- tibble(
+  code = c("gb-eng", "gb-nir", "gb-sct", "gb-wls"),
+  name = c("England", "Northern Ireland", "Scotland", "Wales"),
+  official_name = c("England", "Northern Ireland", "Scotland", "Wales"),
+  capital = c("London", "Belfast", "Edinburgh", "Cardiff"),
+  region = "Europe",
+  subregion = "Northern Europe (UK)",
+  population = c("57,106,000", "1,910,000", "5,447,000", "3,132,000"),
+  area = c("130,279 km²", "14,130 km²", "77,933 km²", "20,779 km²"),
+  languages = c("English", "English, Irish, Ulster Scots", "English, Scots, Scottish Gaelic", "English, Welsh"),
+  currencies = "British pound (£)",
+  car_side = "Left",
+  demonym = c("English", "Northern Irish", "Scottish", "Welsh"),
+  tld = c(".uk / .eng", ".uk", ".scot / .uk", ".wales / .cymru"),
+  timezone = "UTC+00:00",
+  borders = c("2 (Scotland, Wales)", "1 (Republic of Ireland)", "1 (England)", "1 (England)"),
+  un_status = "UK Constituent Country",
+  start_of_week = "Monday",
+  coat_of_arms = "",
+  map_url = c(
+    "https://www.openstreetmap.org/#map=6/52.5/-1.5",
+    "https://www.openstreetmap.org/#map=7/54.6/-6.7",
+    "https://www.openstreetmap.org/#map=6/56.8/-4.2",
+    "https://www.openstreetmap.org/#map=7/52.3/-3.8"
+  ),
+  flag_fact = c(
+    "The St George's Cross features a bold red cross on a white field and has been England's national emblem since the Middle Ages.",
+    "Historic banner associated with Northern Ireland featuring the Red Hand of Ulster inside a six-pointed star beneath a crown on a St George's cross.",
+    "The Saltire (St Andrew's Cross) features a white diagonal cross on a sky-blue field and is one of the oldest national flags still in use.",
+    "Y Ddraig Goch ('The Red Dragon') shows a fierce red dragon passant on a green and white field, used as a symbol of Wales for centuries."
+  )
+)
+
+all_facts <- bind_rows(country_facts, uk_nations)
+
+flag_files <- tibble(file = list.files("w2560", pattern = "\\.png$")) |>
+  mutate(code = str_remove(file, "\\.png$")) |>
+  left_join(all_facts, by = "code") |>
+  arrange(name)
+
+ojs_define(flags_data = flag_files)
+```
+
+```{ojs}
+flags = transpose(flags_data)
+
+regionColors = ({
+  "Americas": { bg: "rgba(244, 63, 94, 0.18)", border: "#f43f5e", text: "#fda4af" },
+  "Europe":   { bg: "rgba(59, 130, 246, 0.18)", border: "#3b82f6", text: "#93c5fd" },
+  "Asia":     { bg: "rgba(245, 158, 11, 0.18)", border: "#f59e0b", text: "#fcd34d" },
+  "Africa":   { bg: "rgba(16, 185, 129, 0.18)", border: "#10b981", text: "#6ee7b7" },
+  "Oceania":  { bg: "rgba(168, 85, 247, 0.18)", border: "#a855f7", text: "#d8b4fe" },
+  "Antarctic":{ bg: "rgba(6, 182, 212, 0.18)",  border: "#06b6d4", text: "#67e8f9" }
+})
+
+mutable selected = flags.find(d => d.code === "jp") || flags[0]
+mutable discovered = new Set(["jp"])
+mutable revealAll = false
+
+// Spotlight / Reveal Card
+{
+  const rc = regionColors[selected.region] || { bg: "rgba(148,163,184,0.2)", border: "#94a3b8", text: "#cbd5e1" };
+
+  return html`<div class="hero-card" style="border-top: 4px solid ${rc.border};">
+    <div style="display: flex; flex-wrap: wrap; gap: 2rem; align-items: center;">
+      
+      <!-- Flag & Coat of Arms column -->
+      <div style="flex: 0 0 310px; text-align: center;">
+        <div style="
+          background: radial-gradient(circle, rgba(255,255,255,0.12) 0%, rgba(15,23,42,0.6) 100%);
+          padding: 14px;
+          border-radius: 16px;
+          border: 1px solid rgba(255,255,255,0.15);
+          box-shadow: 0 12px 28px rgba(0,0,0,0.4);
+        ">
+          <img src="w2560/${selected.file}" alt="Flag of ${selected.name}" style="
+            width: 100%;
+            max-height: 195px;
+            object-fit: contain;
+            border-radius: 8px;
+          ">
+        </div>
+
+        <div style="display: flex; justify-content: center; align-items: center; gap: 10px; margin-top: 0.85rem; flex-wrap: wrap;">
+          <span style="
+            background: ${rc.bg};
+            border: 1px solid ${rc.border};
+            color: ${rc.text};
+            padding: 3px 12px;
+            border-radius: 999px;
+            font-size: 0.8rem;
+            font-weight: 700;
+          ">${selected.region}</span>
+          <span style="
+            background: rgba(255,255,255,0.08);
+            padding: 3px 10px;
+            border-radius: 999px;
+            font-size: 0.8rem;
+            color: #cbd5e1;
+          ">ISO: <code>${selected.code.toUpperCase()}</code></span>
+          <a href="${selected.map_url}" target="_blank" style="
+            background: rgba(56, 189, 248, 0.15);
+            border: 1px solid #38bdf8;
+            color: #7dd3fc;
+            padding: 3px 12px;
+            border-radius: 999px;
+            font-size: 0.8rem;
+            text-decoration: none;
+            font-weight: 600;
+          ">🗺️ View on Map ↗</a>
+        </div>
+      </div>
+
+      <!-- Country Details & Fun Facts column -->
+      <div style="flex: 1 1 360px;">
+        <div style="display: flex; align-items: center; justify-content: space-between; gap: 1rem; flex-wrap: wrap;">
+          <div>
+            <h2 style="margin: 0; font-size: 2rem; font-weight: 800; color: #ffffff; letter-spacing: -0.02em;">
+              ${selected.name}
+            </h2>
+            <div style="color: #94a3b8; font-size: 0.95rem; margin-top: 2px;">
+              ${selected.official_name} • <span style="color: #38bdf8;">${selected.un_status}</span>
+            </div>
+          </div>
+          ${selected.coat_of_arms ? html`<img src="${selected.coat_of_arms}" title="National Coat of Arms" style="height: 62px; width: auto; object-fit: contain; filter: drop-shadow(0 2px 6px rgba(255,255,255,0.25));">` : ""}
+        </div>
+
+        <!-- Flag Symbolism & Story Box -->
+        <div style="
+          background: linear-gradient(90deg, rgba(59, 130, 246, 0.18), rgba(168, 85, 247, 0.14));
+          border-left: 4px solid #60a5fa;
+          padding: 0.9rem 1.1rem;
+          border-radius: 10px;
+          margin: 1rem 0;
+          color: #e2e8f0;
+          line-height: 1.5;
+          font-size: 0.95rem;
+        ">
+          <div style="font-weight: 700; color: #93c5fd; margin-bottom: 4px; text-transform: uppercase; font-size: 0.75rem; letter-spacing: 0.05em;">
+            🎨 Flag Design & Symbolism
+          </div>
+          ${selected.flag_fact}
+        </div>
+
+        <!-- Fun Facts Grid -->
+        <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(165px, 1fr)); gap: 0.65rem;">
+          <div class="stat-tile">
+            <div class="stat-label">🏛️ Capital City</div>
+            <div class="stat-value">${selected.capital}</div>
+          </div>
+          <div class="stat-tile">
+            <div class="stat-label">👥 Population</div>
+            <div class="stat-value">${selected.population}</div>
+          </div>
+          <div class="stat-tile">
+            <div class="stat-label">📐 Total Area</div>
+            <div class="stat-value">${selected.area}</div>
+          </div>
+          <div class="stat-tile">
+            <div class="stat-label">🗣️ Languages</div>
+            <div class="stat-value">${selected.languages}</div>
+          </div>
+          <div class="stat-tile">
+            <div class="stat-label">💱 Currency</div>
+            <div class="stat-value">${selected.currencies}</div>
+          </div>
+          <div class="stat-tile">
+            <div class="stat-label">🙋 Demonym (Citizen)</div>
+            <div class="stat-value">${selected.demonym}</div>
+          </div>
+          <div class="stat-tile">
+            <div class="stat-label">🧭 Borders</div>
+            <div class="stat-value">${selected.borders}</div>
+          </div>
+          <div class="stat-tile">
+            <div class="stat-label">🚗 Drives On / 🌐 Domain</div>
+            <div class="stat-value">${selected.car_side} side • <code>${selected.tld}</code></div>
+          </div>
+          <div class="stat-tile">
+            <div class="stat-label">⏰ Timezone & Week Start</div>
+            <div class="stat-value">${selected.timezone} (${selected.start_of_week})</div>
+          </div>
+        </div>
+      </div>
+
+    </div>
+  </div>`;
+}
+```
+
+```{ojs}
+// Interactive Toolbar: Surprise Me, Quiz/Reveal toggle, and Discovery Tracker
+{
+  const bar = html`<div style="
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: 1rem;
+    background: rgba(30, 41, 59, 0.75);
+    border: 1px solid rgba(148, 163, 184, 0.2);
+    padding: 0.9rem 1.25rem;
+    border-radius: 14px;
+    margin-bottom: 1rem;
+  ">
+    <div style="display: flex; flex-wrap: wrap; gap: 0.65rem; align-items: center;">
+      <button class="action-btn" id="random-btn" style="background: linear-gradient(90deg, #ec4899, #8b5cf6); color: white;">
+        🎲 Surprise Me!
+      </button>
+      <button class="action-btn" id="reveal-btn" style="background: ${revealAll ? "#10b981" : "#334155"}; color: white; border: 1px solid rgba(255,255,255,0.15);">
+        ${revealAll ? "🙈 Hide Names (Mystery Mode)" : "👁️ Reveal All Country Names"}
+      </button>
+    </div>
+    <div style="
+      background: rgba(250, 204, 21, 0.15);
+      border: 1px solid #facc15;
+      color: #fde047;
+      padding: 0.4rem 1rem;
+      border-radius: 999px;
+      font-weight: 700;
+      font-size: 0.9rem;
+    ">
+      🏆 Flags Discovered: ${discovered.size} / ${flags.length}
+    </div>
+  </div>`;
+
+  bar.querySelector("#random-btn").onclick = () => {
+    const pick = flags[Math.floor(Math.random() * flags.length)];
+    mutable selected = pick;
+    discovered.add(pick.code);
+    mutable discovered = new Set(discovered);
+    window.scrollTo({ top: 0, behavior: "smooth" });
+  };
+
+  bar.querySelector("#reveal-btn").onclick = () => {
+    mutable revealAll = !revealAll;
+  };
+
+  return bar;
+}
+```
+
+```{ojs}
+viewof region_filter = Inputs.radio(
+  ["All Regions", "Americas", "Europe", "Asia", "Africa", "Oceania", "Antarctic"],
+  { label: "🌍 Region:", value: "All Regions" }
+)
+
+viewof search_query = Inputs.text({
+  label: "🔍 Search:",
+  placeholder: "Search by country, capital, or language (reveals matching flags)..."
+})
+```
+
+```{ojs}
+filtered_flags = flags.filter(d => {
+  const matchesRegion = region_filter === "All Regions" || d.region === region_filter;
+  const q = search_query.trim().toLowerCase();
+  const matchesSearch = !q ||
+    d.name.toLowerCase().includes(q) ||
+    d.capital.toLowerCase().includes(q) ||
+    d.languages.toLowerCase().includes(q) ||
+    d.code.toLowerCase().includes(q);
+  return matchesRegion && matchesSearch;
+})
+
+{
+  const grid = html`<div style="
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(105px, 1fr));
+    gap: 14px;
+    margin-top: 1rem;
+  "></div>`;
+
+  for (const item of filtered_flags) {
+    const isSelected = item.code === selected.code;
+    const isRevealed = revealAll || isSelected || discovered.has(item.code) || search_query.trim().length > 0;
+    const rc = regionColors[item.region] || { bg: "rgba(148,163,184,0.15)", border: "#64748b", text: "#cbd5e1" };
+
+    const card = html`<button class="mini-flag-btn" title="Click to reveal country & fun facts!" style="
+      background: ${isSelected
+        ? "linear-gradient(145deg, rgba(37, 99, 235, 0.45), rgba(124, 58, 237, 0.45))"
+        : isRevealed
+        ? "rgba(30, 41, 59, 0.9)"
+        : "rgba(15, 23, 42, 0.75)"};
+      border: ${isSelected
+        ? "2px solid #38bdf8"
+        : isRevealed
+        ? `1px solid ${rc.border}`
+        : "1px solid rgba(148, 163, 184, 0.2)"};
+      box-shadow: ${isSelected ? "0 0 18px rgba(56, 189, 248, 0.45)" : "0 2px 6px rgba(0,0,0,0.25)"};
+    ">
+      <img src="w2560/${item.file}" loading="lazy" style="
+        width: 82px;
+        height: 54px;
+        object-fit: contain;
+        border-radius: 4px;
+        filter: drop-shadow(0 2px 4px rgba(0,0,0,0.4));
+      ">
+      <span style="
+        margin-top: 8px;
+        font-size: 0.76rem;
+        font-weight: ${isRevealed ? "700" : "600"};
+        color: ${isSelected ? "#ffffff" : isRevealed ? rc.text : "#64748b"};
+        text-align: center;
+        line-height: 1.15;
+      ">${isRevealed ? item.name : "❓ Guess Me"}</span>
+    </button>`;
+
+    card.onclick = () => {
+      mutable selected = item;
+      discovered.add(item.code);
+      mutable discovered = new Set(discovered);
+      window.scrollTo({ top: 0, behavior: "smooth" });
+    };
+    grid.appendChild(card);
+  }
+
+  return grid;
+}
+```
