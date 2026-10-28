@@ -1,6 +1,8 @@
 ---
 title: "🌍 World Flag Explorer"
 page-layout: full
+resources:
+  - w2560/*.png
 format:
   html:
     theme: cosmo
